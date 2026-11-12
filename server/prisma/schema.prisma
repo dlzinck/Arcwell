@@ -1,0 +1,10 @@
+// Generate the Prisma Client for our TypeScript backend.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Configure PostgreSQL as Arcwell's database.
+datasource db {
+  provider = "postgresql"
+}
