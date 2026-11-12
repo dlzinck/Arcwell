@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import 'dotenv/config'
+import { prisma } from './lib/prisma.js'
 
 // Initialize the Express application.
 const app = express()
@@ -8,10 +9,9 @@ const app = express()
 // Use the configured environment port or default to 3000.
 const PORT = process.env.PORT || 3000
 
-// Middleware configuration
+// Middleware configuration.
 
 // Allow requests from the React development server.
-// Additional origins can be configured as the application grows.
 app.use(cors({ origin: 'http://localhost:5173' }))
 
 // Parse incoming JSON request bodies.
@@ -24,6 +24,30 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     message: 'Arcwell API is running'
   })
+})
+
+// Database health check endpoint.
+// Executes a simple SQL query to verify PostgreSQL connectivity.
+app.get('/api/db-health', async (_req, res) => {
+  try {
+    // Send a simple query to PostgreSQL through Prisma.
+    await prisma.$queryRaw`SELECT 1`
+
+    // Return a success response when the database responds.
+    res.json({
+      status: 'ok',
+      message: 'Arcwell database is connected'
+    })
+  } catch (error) {
+    // Log the error on the server for troubleshooting.
+    console.error('Database connection failed:', error)
+
+    // Return an error response without exposing database details.
+    res.status(503).json({
+      status: 'error',
+      message: 'Database connection failed'
+    })
+  }
 })
 
 // Start listening for incoming HTTP requests.

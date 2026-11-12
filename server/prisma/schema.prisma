@@ -1,10 +1,131 @@
 // Generate the Prisma Client for our TypeScript backend.
+// This allows our Express API to interact with PostgreSQL.
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
 // Configure PostgreSQL as Arcwell's database.
+// The connection URL is configured in prisma.config.ts.
 datasource db {
   provider = "postgresql"
+}
+
+// Represents a registered user in Arcwell.
+// Each user can create and manage multiple projects.
+model User {
+  // Unique identifier automatically generated for each user.
+  id String @id @default(uuid())
+
+  // User's display name.
+  name String
+
+  // Email address must be unique across all accounts.
+  email String @unique
+
+  // Stores a securely hashed password, never plain text.
+  passwordHash String
+
+  // Automatically records when the account was created.
+  createdAt DateTime @default(now())
+
+  // Automatically updates when account information changes.
+  updatedAt DateTime @updatedAt
+
+  // Projects owned by this user.
+  // One user can own multiple projects.
+  projects Project[]
+}
+
+// Represents a project created by an Arcwell user.
+// Each project belongs to one user and can contain multiple tasks.
+model Project {
+  // Unique identifier automatically generated for each project.
+  id String @id @default(uuid())
+
+  // Name of the project.
+  name String
+
+  // Optional description explaining the project's purpose.
+  description String?
+
+  // Automatically records when the project was created.
+  createdAt DateTime @default(now())
+
+  // Automatically updates when project information changes.
+  updatedAt DateTime @updatedAt
+
+  // Stores the unique ID of the user who owns this project.
+  ownerId String
+
+  // Connects this project to its owner.
+  // The ownerId references the id field in the User model.
+  owner User @relation(fields: [ownerId], references: [id])
+
+  // Tasks belonging to this project.
+  // One project can contain multiple tasks.
+  tasks Task[]
+}
+
+// Represents an individual task within a project.
+// Each task belongs to one project.
+model Task {
+  // Unique identifier automatically generated for each task.
+  id String @id @default(uuid())
+
+  // Short title describing what needs to be completed.
+  title String
+
+  // Optional detailed description of the task.
+  description String?
+
+  // Tracks the current progress of the task.
+  // New tasks automatically start with TODO status.
+  status TaskStatus @default(TODO)
+
+  // Indicates how important the task is.
+  // New tasks automatically receive MEDIUM priority.
+  priority TaskPriority @default(MEDIUM)
+
+  // Optional deadline for completing the task.
+  // The question mark means this field can be empty.
+  dueDate DateTime?
+
+  // Automatically records when the task was created.
+  createdAt DateTime @default(now())
+
+  // Automatically updates when task information changes.
+  updatedAt DateTime @updatedAt
+
+  // Stores the unique ID of the project containing this task.
+  projectId String
+
+  // Connects this task to its parent project.
+  // The projectId references the id field in the Project model.
+  project Project @relation(fields: [projectId], references: [id])
+}
+
+// Defines the possible progress states of a task.
+// Enums restrict fields to a predefined set of values.
+enum TaskStatus {
+  // The task has not been started.
+  TODO
+
+  // Someone is currently working on the task.
+  IN_PROGRESS
+
+  // The task has been completed.
+  COMPLETED
+}
+
+// Defines the available priority levels for tasks.
+enum TaskPriority {
+  // Task has low urgency.
+  LOW
+
+  // Task has normal urgency.
+  MEDIUM
+
+  // Task requires higher attention.
+  HIGH
 }
