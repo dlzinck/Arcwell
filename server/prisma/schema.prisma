@@ -102,7 +102,10 @@ model Task {
 
   // Connects this task to its parent project.
   // The projectId references the id field in the Project model.
-  project Project @relation(fields: [projectId], references: [id])
+  // onDelete: Cascade tells PostgreSQL to automatically delete
+  // all tasks belonging to a project when that project is deleted.
+  // This prevents tasks from being left without a parent project.
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 // Defines the possible progress states of a task.
