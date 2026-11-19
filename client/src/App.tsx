@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { LoginForm } from './components/LoginForm'
 import { RegisterForm } from './components/RegisterForm'
+import { ProjectDashboard } from './components/ProjectDashboard' // Displays projects belonging to the authenticated user.
 import { getCurrentUser, logoutUser } from './lib/auth'
 import { ApiError } from './lib/api'
 import type { User } from './types/auth'
@@ -188,7 +189,7 @@ async function handleLogout() {
 ) : (
         // Temporary authenticated screen.
         // We'll replace this with the dashboard later.
-        <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center shadow-xl">
+        <div className="w-full max-w-6xl rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center shadow-xl">
           <h2 className="text-2xl font-bold text-white">
             Welcome, {user.name}!
           </h2>
@@ -196,6 +197,10 @@ async function handleLogout() {
           <p className="mt-3 text-slate-400">
             You have successfully logged into Arcwell.
           </p>
+          {/* Display the authenticated user's projects. */}
+          <div className="mx-auto mt-8 w-full max-w-5xl text-left">
+            <ProjectDashboard />
+          </div>          
           {/* Display an error if the logout request fails. */}
           {logoutError && (
           <p role="alert" className="mt-4 text-sm text-red-400">
