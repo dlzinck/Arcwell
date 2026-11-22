@@ -1,39 +1,56 @@
 import { useState } from 'react'
-import { createProject } from '../lib/projects'
+import { createProject, updateProject } from '../lib/projects'
 import type { Project } from '../types/projects'
 
 /**
- * Properties passed into our ProjectForm component.
+ * Properties accepted by our reusable project form.
+ * If a project is provided, the form edits that project.
+ * Otherwise, the form creates a new project.
  */
 interface ProjectFormProps {
-  // Notifies the dashboard when a project is created.
-  onProjectCreated: (project: Project) => void
+  // Existing project to edit, if applicable.
+  project?: Project
 
-  // Allows the dashboard to close the form.
+  // Notifies the dashboard after a successful save.
+  onProjectSaved: (project: Project) => void
+
+  // Closes the form without saving changes.
   onCancel: () => void
 }
 
 /**
- * Form for creating new Arcwell projects.
+ * Reusable form for creating and editing Arcwell projects.
+ * Both operations share the same fields and validation.
+ * This prevents us from maintaining two separate forms.
  */
 export function ProjectForm({
-  onProjectCreated,
+  project,
+  onProjectSaved,
   onCancel
 }: ProjectFormProps) {
-  // Stores the project name entered by the user.
-  const [name, setName] = useState('')
+  // Determines whether we're editing an existing project.
+  const isEditing = project !== undefined
 
-  // Stores the optional project description.
-  const [description, setDescription] = useState('')
+  // Stores the project name.
+  // When editing, initialize it with the existing name.
+  const [name, setName] = useState(project?.name ?? '')
 
-  // Tracks whether the project is being saved.
+  // Stores the project description.
+  // Null descriptions become empty strings in the form.
+  const [description, setDescription] = useState(
+    project?.description ?? ''
+  )
+
+  // Tracks whether the project is currently being saved.
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Stores any error encountered during creation.
+  // Stores any error encountered during submission.
   const [error, setError] = useState('')
 
   /**
-   * Handles submission of the new project.
+   * Handles creating or updating a project.
+   * The operation depends on whether an existing
+   * project was provided to the component.
    */
   async function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -47,22 +64,38 @@ export function ProjectForm({
       return
     }
 
+    // Disable submission while the API request is running.
     setIsSubmitting(true)
+
+    // Clear errors from previous attempts.
     setError('')
 
     try {
-      // Send the project information to Express.
-      const response = await createProject({
+      // Prepare the information submitted to Express.
+      const projectData = {
         name: name.trim(),
         description: description.trim()
-      })
+      }
 
-      // Notify the dashboard about the newly created project.
-      onProjectCreated(response.project)
+      // Create or update the project depending on the mode.
+      const response = isEditing
+        ? await updateProject(project.id, projectData)
+        : await createProject(projectData)
+
+      // Notify the dashboard about the saved project.
+      // The dashboard will update its local React state.
+      onProjectSaved(response.project)
     } catch (error) {
-      console.error('Failed to create project:', error)
-      setError('Unable to create project. Please try again.')
+      console.error('Failed to save project:', error)
+
+      // Display an appropriate message for the operation.
+      setError(
+        isEditing
+          ? 'Unable to update project. Please try again.'
+          : 'Unable to create project. Please try again.'
+      )
     } finally {
+      // Re-enable the form after the request finishes.
       setIsSubmitting(false)
     }
   }
@@ -72,8 +105,9 @@ export function ProjectForm({
       onSubmit={handleSubmit}
       className="mb-8 rounded-2xl border border-slate-700 bg-slate-950 p-6"
     >
+      {/* Change the heading depending on the form mode. */}
       <h3 className="mb-6 text-xl font-semibold text-white">
-        Create a project
+        {isEditing ? 'Edit project' : 'Create a project'}
       </h3>
 
       {/* Project name */}
@@ -137,7 +171,13 @@ export function ProjectForm({
           disabled={isSubmitting}
           className="rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSubmitting ? 'Creating...' : 'Create project'}
+          {isSubmitting
+            ? isEditing
+              ? 'Saving...'
+              : 'Creating...'
+            : isEditing
+              ? 'Save changes'
+              : 'Create project'}
         </button>
       </div>
     </form>
