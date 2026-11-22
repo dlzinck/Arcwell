@@ -4,7 +4,14 @@ import 'dotenv/config'
 import { prisma } from './lib/prisma.js'
 import { sessionMiddleware } from './lib/session.js'
 import { authRouter } from './routes/auth.js'
-import { projectsRouter } from './routes/projects.js' // Import the routes responsible for managing projects.
+import { projectsRouter } from './routes/projects.js'
+import { tasksRouter } from './routes/tasks.js'
+
+/**
+ * Arcwell Express Server
+ * Handles authentication, project management,
+ * task management, and database health checks.
+ */
 
 // Initialize the Express application.
 const app = express()
@@ -14,7 +21,6 @@ const PORT = process.env.PORT || 3000
 
 /**
  * Global Middleware
- *
  * Middleware processes incoming requests before
  * they reach our API endpoints.
  */
@@ -37,7 +43,6 @@ app.use(sessionMiddleware)
 
 /**
  * API Routes
- *
  * Group related endpoints under their own prefixes.
  */
 
@@ -47,11 +52,31 @@ app.use('/api/auth', authRouter)
 
 // Register project management routes.
 // The projects router protects its endpoints with requireAuth.
+//
+// Available operations:
+// POST   /api/projects
+// GET    /api/projects
+// GET    /api/projects/:id
+// PATCH  /api/projects/:id
+// DELETE /api/projects/:id
 app.use('/api/projects', projectsRouter)
+
+// Register task management routes.
+//
+// Tasks belong to individual projects.
+// The tasks router verifies authentication and
+// project ownership before allowing operations.
+//
+// Available operations:
+// POST   /api/projects/:projectId/tasks
+// GET    /api/projects/:projectId/tasks
+// GET    /api/projects/:projectId/tasks/:taskId
+// PATCH  /api/projects/:projectId/tasks/:taskId
+// DELETE /api/projects/:projectId/tasks/:taskId
+app.use('/api/projects', tasksRouter)
 
 /**
  * Health Check Routes
- *
  * Used to verify that the API and database are running.
  */
 
@@ -88,7 +113,6 @@ app.get('/api/db-health', async (_req, res) => {
 
 /**
  * Start the Server
- *
  * Listen for incoming HTTP requests.
  */
 app.listen(PORT, () => {
