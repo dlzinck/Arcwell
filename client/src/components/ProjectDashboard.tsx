@@ -1,38 +1,58 @@
 import { useEffect, useState } from 'react'
 import { deleteProject, getProjects } from '../lib/projects'
 import { ProjectForm } from './ProjectForm'
+import { ProjectWorkspace } from './ProjectWorkspace'
 import type { Project } from '../types/projects'
 
 /**
- * Displays projects belonging to the authenticated user.
- * Projects are retrieved from our Express API.
- * Users can create, edit, and delete their projects.
+ * Arcwell Project Dashboard
+ * Main dashboard for authenticated users.
+ * Customers can:
+ *  View all projects they own.
+ *  Create new projects.
+ *  Edit existing projects.
+ *  Delete projects after confirmation.
+ *  Open a dedicated workspace for each project.
+ * Project workspaces contain task management functionality.
+ * All project data is retrieved from our protected Express API.
+ * The backend verifies authentication and project ownership.
  */
+
 export function ProjectDashboard() {
   // Stores projects returned by the backend.
   const [projects, setProjects] = useState<Project[]>([])
 
-  // Tracks whether the initial request is running.
+  // Tracks whether projects are being retrieved.
   const [isLoading, setIsLoading] = useState(true)
 
   // Stores errors encountered while loading projects.
   const [error, setError] = useState('')
 
-  // Controls whether the creation form is visible.
+  // Controls whether the project creation form is visible.
   const [isCreatingProject, setIsCreatingProject] = useState(false)
 
   // Stores the project currently being edited.
-  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [editingProject, setEditingProject] =
+    useState<Project | null>(null)
 
   // Stores the project awaiting deletion confirmation.
-  // Null means no deletion confirmation is open.
-  const [deletingProject, setDeletingProject] = useState<Project | null>(null)
+  const [deletingProject, setDeletingProject] =
+    useState<Project | null>(null)
 
   // Tracks whether a deletion request is running.
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Stores errors encountered while deleting a project.
   const [deleteError, setDeleteError] = useState('')
+
+  /**
+   * Stores the ID of the currently opened project workspace.
+   * Null means the customer is viewing the main dashboard.
+   * We store the ID instead of a separate Project object
+   * so the workspace always receives the latest project data.
+   */
+  const [selectedProjectId, setSelectedProjectId] =
+    useState<string | null>(null)
 
   /**
    * Retrieves projects when the dashboard first appears.
@@ -43,7 +63,7 @@ export function ProjectDashboard() {
 
     async function loadProjects() {
       try {
-        // Request the authenticated user's projects.
+        // Request projects belonging to the authenticated user.
         const response = await getProjects()
 
         if (isActive) {
@@ -53,7 +73,9 @@ export function ProjectDashboard() {
         console.error('Failed to load projects:', error)
 
         if (isActive) {
-          setError('Unable to load your projects. Please try again.')
+          setError(
+            'Unable to load your projects. Please try again.'
+          )
         }
       } finally {
         if (isActive) {
@@ -62,9 +84,9 @@ export function ProjectDashboard() {
       }
     }
 
-    loadProjects()
+    void loadProjects()
 
-    // Ignore the request result if the component unmounts.
+    // Ignore responses after the component unmounts.
     return () => {
       isActive = false
     }
@@ -72,52 +94,91 @@ export function ProjectDashboard() {
 
   /**
    * Handles a successfully created project.
-   * Adds the new project without refreshing the page.
+   * Adds the project to React state without refreshing.
    */
   function handleProjectCreated(project: Project) {
-    setProjects((currentProjects) => [project, ...currentProjects])
+    setProjects((currentProjects) => [
+      project,
+      ...currentProjects,
+    ])
 
-    // Close the creation form.
     setIsCreatingProject(false)
   }
 
   /**
    * Handles a successfully updated project.
-   * Replaces the existing project with the updated version.
+   * Replaces the previous project data with the
+   * updated project returned by the backend.
    */
   function handleProjectUpdated(updatedProject: Project) {
     setProjects((currentProjects) =>
       currentProjects.map((project) =>
-        project.id === updatedProject.id ? updatedProject : project
+        project.id === updatedProject.id
+          ? updatedProject
+          : project
       )
     )
 
-    // Close the editing form.
     setEditingProject(null)
+  }
+
+  /**
+   * Opens the project creation form.
+   * Closes other project actions to keep the
+   * interface organized and predictable.
+   */
+  function handleCreateProject() {
+    if (isDeleting) return
+
+    setEditingProject(null)
+    setDeletingProject(null)
+    setDeleteError('')
+    setIsCreatingProject(true)
   }
 
   /**
    * Opens the editing form for a selected project.
    */
   function handleEditProject(project: Project) {
+    if (isDeleting) return
+
     setIsCreatingProject(false)
+    setDeletingProject(null)
+    setDeleteError('')
     setEditingProject(project)
   }
 
   /**
-   * Opens the creation form.
+   * Opens the selected project's dedicated workspace.
+   * Task management takes place inside ProjectWorkspace.
    */
-  function handleCreateProject() {
+  function handleOpenWorkspace(project: Project) {
+    if (isDeleting) return
+
+    // Close any unfinished dashboard actions.
+    setIsCreatingProject(false)
     setEditingProject(null)
-    setIsCreatingProject(true)
+    setDeletingProject(null)
+    setDeleteError('')
+
+    // Select the project by its unique database ID.
+    setSelectedProjectId(project.id)
+  }
+
+  /**
+   * Returns to the main project dashboard.
+   * Project data remains in React state, so returning
+   * does not require another API request.
+   */
+  function handleBackToProjects() {
+    setSelectedProjectId(null)
   }
 
   /**
    * Opens deletion confirmation for a selected project.
-   * No API request is sent until the user confirms.
+   * No API request is sent until the customer confirms.
    */
   function handleRequestDelete(project: Project) {
-    // Avoid opening multiple confirmations during deletion.
     if (isDeleting) return
 
     // Close other forms to avoid conflicting actions.
@@ -143,34 +204,41 @@ export function ProjectDashboard() {
 
   /**
    * Permanently deletes the selected project.
-   * Express verifies ownership before deleting.
-   * PostgreSQL also deletes associated tasks through
-   * the cascading foreign key we configured earlier.
+   * The Express backend verifies ownership.
+   * PostgreSQL automatically deletes associated tasks
+   * through the cascading foreign key relationship.
    */
   async function handleConfirmDelete() {
-    // Require a selected project and prevent duplicate requests.
     if (!deletingProject || isDeleting) return
+
+    // Capture the ID before starting the asynchronous request.
+    const projectId = deletingProject.id
 
     setIsDeleting(true)
     setDeleteError('')
 
     try {
       // Request deletion from our Express backend.
-      await deleteProject(deletingProject.id)
+      await deleteProject(projectId)
 
       // Remove the deleted project from React state.
       setProjects((currentProjects) =>
         currentProjects.filter(
-          (project) => project.id !== deletingProject.id
+          (project) => project.id !== projectId
         )
       )
 
       // Close the confirmation after successful deletion.
       setDeletingProject(null)
+
+      // Return to the dashboard if this project was selected.
+      if (selectedProjectId === projectId) {
+        setSelectedProjectId(null)
+      }
     } catch (error) {
       console.error('Failed to delete project:', error)
 
-      // Keep the confirmation open so the user can retry.
+      // Keep confirmation open so the customer can retry.
       setDeleteError(
         'Unable to delete this project. Please try again.'
       )
@@ -179,9 +247,32 @@ export function ProjectDashboard() {
     }
   }
 
+  /**
+   * Find the currently selected project using its ID.
+   * This ensures the workspace receives updated project
+   * information if the project changes in React state.
+   */
+  const selectedProject = projects.find(
+    (project) => project.id === selectedProjectId
+  )
+
+  /**
+   * Show the dedicated project workspace when a
+   * valid project has been selected.
+   * Returning early keeps workspace rendering separate
+   * from the main dashboard.
+   */
+  if (selectedProject) {
+    return (
+      <ProjectWorkspace
+        project={selectedProject}
+        onBack={handleBackToProjects}
+      />
+    )
+  }
+
   return (
     <section className="w-full max-w-5xl">
-
       {/* Dashboard heading and project creation button */}
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -190,7 +281,8 @@ export function ProjectDashboard() {
           </h2>
 
           <p className="mt-2 text-slate-400">
-            Manage your work in one place.
+            Manage your projects, tasks, and progress
+            in one place.
           </p>
         </div>
 
@@ -205,7 +297,7 @@ export function ProjectDashboard() {
         </button>
       </div>
 
-      {/* Display the creation form when requested. */}
+      {/* Display the project creation form. */}
       {isCreatingProject && (
         <ProjectForm
           key="create"
@@ -254,7 +346,10 @@ export function ProjectDashboard() {
 
           {/* Display errors if deletion fails. */}
           {deleteError && (
-            <p role="alert" className="mt-4 text-sm text-red-400">
+            <p
+              role="alert"
+              className="mt-4 text-sm text-red-400"
+            >
               {deleteError}
             </p>
           )}
@@ -265,77 +360,90 @@ export function ProjectDashboard() {
               type="button"
               onClick={handleCancelDelete}
               disabled={isDeleting}
-              className="rounded-lg border border-slate-700 px-5 py-3 font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              className="rounded-lg border border-slate-700 px-5 py-3 font-semibold text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
             >
               Cancel
             </button>
 
             <button
               type="button"
-              onClick={handleConfirmDelete}
+              onClick={() => void handleConfirmDelete()}
               disabled={isDeleting}
               className="rounded-lg bg-red-700 px-5 py-3 font-semibold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isDeleting ? 'Deleting...' : 'Delete permanently'}
+              {isDeleting
+                ? 'Deleting...'
+                : 'Delete permanently'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Display a loading message while retrieving projects. */}
+      {/* Loading, error, and empty states */}
       {isLoading ? (
         <p role="status" className="text-slate-400">
           Loading your projects...
         </p>
       ) : error ? (
-        // Display an error if the API request fails.
         <p role="alert" className="text-red-400">
           {error}
         </p>
       ) : projects.length === 0 ? (
-        // Display an empty state for new accounts.
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center">
           <h3 className="text-xl font-semibold text-white">
             No projects yet
           </h3>
 
           <p className="mt-3 text-slate-400">
-            Your projects will appear here once you create one.
+            Create your first project to start organizing
+            your work and tracking tasks.
           </p>
         </div>
       ) : (
-        // Display projects in a responsive grid.
+        /* Display projects in a responsive grid. */
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
             <article
               key={project.id}
-              className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-lg"
+              className="flex flex-col rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-lg transition hover:border-slate-700"
             >
               {/* Project name */}
-              <h3 className="text-xl font-semibold text-white">
+              <h3 className="break-words text-xl font-semibold text-white">
                 {project.name}
               </h3>
 
               {/* Project description */}
-              <p className="mt-3 text-sm text-slate-400">
-                {project.description || 'No description provided.'}
+              <p className="mt-3 flex-1 whitespace-pre-wrap break-words text-sm text-slate-400">
+                {project.description ||
+                  'No description provided.'}
               </p>
 
               {/* Project creation date */}
               <p className="mt-6 text-xs text-slate-500">
                 Created{' '}
-                {new Date(project.createdAt).toLocaleDateString()}
+                {new Date(
+                  project.createdAt
+                ).toLocaleDateString()}
               </p>
 
-              {/* Project management actions */}
-              <div className="mt-5 flex flex-wrap gap-3">
+              {/* Primary project action */}
+              <button
+                type="button"
+                onClick={() => handleOpenWorkspace(project)}
+                disabled={isDeleting}
+                className="mt-5 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Open workspace
+              </button>
 
+              {/* Secondary project management actions */}
+              <div className="mt-3 flex flex-wrap gap-3">
                 {/* Edit the selected project. */}
                 <button
                   type="button"
                   onClick={() => handleEditProject(project)}
                   disabled={isDeleting}
-                  className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-emerald-400 transition hover:bg-slate-800 disabled:opacity-50"
+                  className="flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
                 >
                   Edit project
                 </button>
@@ -345,7 +453,7 @@ export function ProjectDashboard() {
                   type="button"
                   onClick={() => handleRequestDelete(project)}
                   disabled={isDeleting}
-                  className="rounded-lg border border-red-900 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-950 disabled:opacity-50"
+                  className="flex-1 rounded-lg border border-red-900 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-950 disabled:opacity-50"
                 >
                   Delete project
                 </button>
